@@ -1,0 +1,191 @@
+/**
+ * @file MessageBus.hpp
+ * @author yilongdong (dyl20001223@163.com)
+ * @date 2022-05-01
+ * @brief
+ * 极简实现的消息总线，类间通信框架。十分灵活的观察者模式+中介者模式。个人认为比传统观察者模式要好。
+ * @details 支持不定参数，通知域，级联通知，运行时增加观察者的消息总线。
+ * 用于类间通信。自身线程安全可重入（为了支持级联式的通知）。接口只提供阻塞的版本。为了简化理解去掉了detach。
+ * 支持函数指针，类成员函数，std::function
+ * (因为多线程下回调存在回调依赖数据析构的问题,
+ * 所以不能保证注册的函数依赖数据的有效性, 建议使用weak_ptr判断有效性)。
+ * 通知的参数暂时不支持引用
+ * (不过可以使用std::ref来实现引用，但要注意attach时函数的参数类型要匹配)。
+ * 没有使用类型擦除。
+ * @version 0.2
+ * @copyright Copyright (c) 2022
+ * TODO: 自动转换std::function, 完善接口, 测试多线程情况，支持嵌套通知
+ */
+
+/*
+  传统观察者模式中 Observer 是基类，这带来了非常强的耦合，强度仅次于友元。
+  这种耦合不仅限制了成员函数的名字、参数、返回值，还限制了成员函数所属的类型（必须是
+  Observer 的派生类）。 Observer 是基类，这意味着如果 Foo
+  想要观察两个类型的事件（比如时钟和温度），需要使用多继承。
+  如果要重复观察同一类型的事件（比如 1 秒钟一次的心跳和 30 秒钟一次的自检），
+  就要用到一些方式来 work around，因为不能从一个 Base class 继承两次。
+  https://blog.csdn.net/solstice/article/details/5238671
+*/
+#pragma once
+#include <functional>
+#include <iostream>
+#include <list>
+#include <map>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+
+#include "Log/Log.h"
+
+class MessageBus {
+ private:
+  template <typename... Args>
+  class MessageHandler;
+
+ public:
+  MessageBus() = default;
+  ~MessageBus() = default;
+  template <typename... Args>
+  static void Notify(std::string const& topic, Args... args) {
+    LOGTRACE("Notify By Topic");
+    GetMessageHandlerByTopic<Args...>(topic).NotifyAll(
+        std::forward<Args>(args)...);
+  }
+  // 接口1
+  template <typename Func>
+  static int Attach(Func func, std::string topic) {
+    return Attach_(func, topic);
+  }
+  // 接口2
+  template <typename Func, typename Self>
+  static int Attach(Func func, Self s, std::string topic) {
+    return Attach_(func, s, topic);
+  }
+
+  // 函数指针
+  template <typename R, typename... Params>
+  static int Attach_(R (*func)(Params...), std::string topic) {
+    LOGTRACE("function ptr");
+    return Attach_(std::function<R(Params...)>(func), topic);
+  }
+  // 类成员函数指针
+  template <typename R, typename ClassType, typename Self, typename... Params>
+  static int Attach_(R (ClassType::*func)(Params...), Self s,
+                     std::string topic) {
+    LOGTRACE("class function ptr");
+    std::function<R(Params...)> ff = [=](Params... ps) -> R {
+      return (s->*func)(ps...);
+    };
+    return Attach_(ff, topic);
+  }
+  // std::function
+  template <typename R, typename... Params>
+  static int Attach_(std::function<R(Params...)> func, std::string topic) {
+    LOGTRACE("std::function");
+    static_assert(std::is_same<void, R>::value,
+                  "the return type of function must be void.");
+    return GetMessageHandlerByTopic<Params...>(topic).AppendNotifyFunc(func);
+  }
+
+  // template <typename R, typename ...Params>
+  // static int Detach(std::string const& topic, std::string const&
+  // observer_name, std::function<R(Params...)> func) {
+  //   static_assert(std::is_same<void, R>::value, "the return type of function
+  //   must be void."); return
+  //   GetMessageHandlerByTopic<Params...>(topic).EraseNotifyFunc(observer_name);
+  // }
+
+ private:
+  // 利用 local static 和 模板的函数重载 实现类似虚函数模板效果，完成类型存储
+
+  template <typename... Params>
+  static MessageHandler<Params...>& GetMessageHandlerByTopic(
+      std::string const& topic) {
+    static std::map<std::string, MessageHandler<Params...>> topic_to_handler;
+    static std::mutex mutex;
+
+    std::lock_guard<std::mutex> locker(mutex);
+    LOGTRACE("MessageHandler Type = %s",
+             typeid(topic_to_handler[topic]).name());
+    return topic_to_handler[topic];
+  }
+};
+
+template <typename... Args>
+class MessageBus::MessageHandler {
+ public:
+  using mutex_type =
+      std::recursive_mutex;  // 使用递归锁，因为要支持级联通知的效果
+  using func_type = std::function<void(Args...)>;
+  MessageHandler() = default;
+  ~MessageHandler() = default;
+
+  void NotifyAll(Args... args) {
+    std::lock_guard<mutex_type> locker(mutex_);
+    for (auto& func : func_list_) {
+      LOGTRACE("notify one observer");
+      func(std::forward<Args>(args)...);
+    }
+  }
+
+  int AppendNotifyFunc(func_type func) {
+    std::lock_guard<mutex_type> locker(mutex_);
+    func_list_.push_back(func);
+    LOGTRACE("add func. cur fun_lis size = %u", func_list_.size());
+    return func_list_.size();
+  }
+
+ private:
+  // std::map<std::string, func_type> notify_func_map_; /* [通知函数名,
+  // 通知函数] */
+  std::list<func_type> func_list_;
+  mutable mutex_type mutex_;
+};
+
+/*
+// 使用示例：
+void observer_func1(int a, int b) {
+  std::cout << __func__ << " " << a + b << "\n";
+}
+void observer_func2(int a, int b) {
+  std::cout << __func__ << " " << a * b << "\n";
+}
+
+void observer_func3(int a, int b, int c) {
+  a = 3;
+  std::cout << __func__ << " " << a + b + c << "\n";
+}
+void observer_func4(int a, int b, int c) {
+  a = 4;
+  std::cout << __func__ << " " << a * b * c << "\n";
+}
+int main() {
+  // [ 通知函数签名: void(Args...) , 通知key: topic ] 两者确定一个通知域
+  std::function<void(int, int)> add_func = observer_func1;
+  std::function<void(int, int)> multi_func = observer_func2;
+  // 函数在多线程下回调的有效性需要自己保证，建议使用weak_ptr
+  // attach的函数可以是任意类型不定数量的模板参数。
+  // 暂时不支持引用参数。引用类型会作为值传递。
+  MessageBus::Attach("math", "add", add_func);
+  MessageBus::Attach("math", "multi", multi_func);
+  // 暂时不支持引用参数。引用类型会作为值传递。
+  MessageBus::NotifyByTopic("math", 2, 4);
+
+  // 对比上面说明
+函数参数一致且topic一致的观察者才在一个通知域。因为同一个通知域会消费相同的通知数据，所以通知函数参数要一致。
+  std::function<void(int, int, int)> add_func2 = observer_func3;
+  std::function<void(int, int, int)> multi_func2 = observer_func4;
+  MessageBus::Attach("math", "add", add_func2);
+  MessageBus::Attach("math", "multi", multi_func2);
+  MessageBus::NotifyByTopic("math", 2, 4, 5);
+
+  //
+说明通知域中的观察者可以运行时增删。但是通知域是编译期生成的，不能动态改变。
+  // detach需要知道通知函数参数类型，之后接口会重新更改的，目前只是示例
+  MessageBus::Detach("math", "multi", multi_func);
+  MessageBus::NotifyByTopic("math", 2, 4);
+  MessageBus::Detach("math", "add", add_func2);
+  MessageBus::NotifyByTopic("math", 2, 4, 6);
+  return 0;
+}
+*/

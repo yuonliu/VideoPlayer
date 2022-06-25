@@ -1,9 +1,12 @@
 #pragma once
 
+#include <iostream>
 #include <vector>
 #include <string>
 #include <cstdint>
 #include <memory>
+#include <map>
+
 
 struct AVPacket;
 struct AVFormatContext;
@@ -26,12 +29,14 @@ public:
 
 };
 
+using VideoInfo = std::map<std::string, std::string>;
+
 class Demuxer
 {
 public:
     Demuxer();
     ~Demuxer();
-    int open(std::string const&);
+    int open(std::string const& filename);
     int close();
     int reset();
     int clear();
@@ -41,18 +46,23 @@ public:
 
     int getStreamCount();
 
-    AVCodecParameters* getStreamCodecPar();
+    AVCodecParameters* getStreamCodecPar(uint32_t index);
 
     int getVideoStreamIndex();
     int getAudioStreamIndex();
 
-    //someformat getVideoInfo() const;
+    VideoInfo getVideoInfo() const;
 
     int read(std::shared_ptr<Packet>);
 
 private:
-    AVFormatContext* formatContext = nullptr;
+    double getInfo();
 
+private:
+    AVFormatContext* formatContext = nullptr;
+    bool onlyAudio = false;
+    uint32_t totalDuration = 0;
+    VideoInfo infoMap;
 };
 
 class Frame

@@ -1,5 +1,6 @@
 extern "C"{
     #include <libavformat/avformat.h>
+    #include <libavcodec/avcodec.h>
 }
 
 #include "AVCore.h"
@@ -46,8 +47,18 @@ int Demuxer::open(std::string const& filename)
 
     infoMap.emplace("filename", filename);
 
+    getInfo();
+    for(auto const&[key,value]:infoMap){
+        std::cout << "key = " << key.c_str() << "value = " << value.c_str() << std::endl;
+    }
+
+    totalDuration = 
+        static_cast<uint32_t>(formatContext->duration/(AV_TIME_BASE/1000));
+        std::cout << "视频总时长 = " << totalDuration << std::endl;
     return ret;
 }
+
+
 
 double Demuxer::getInfo()
 {
@@ -64,15 +75,82 @@ double Demuxer::getInfo()
     hours = mins /60;
     mins %= 60;
     char duration_format[128];
+    sprintf(duration_format, "%d:%d:%d",hours,mins,secs);
+    infoMap.emplace("duration",duration_format);
 
+    infoMap.emplace("bit rate",std::to_string(formatContext->bit_rate));
+
+    AVDictionaryEntry* iter = nullptr;
+
+    while((
+        iter = av_dict_get(formatContext->metadata,"",iter,AV_DICT_IGNORE_SUFFIX)
+    )){
+        infoMap.emplace(iter->key, iter->value);
+    }
+
+    for(uint32_t i = 0; i < formatContext->nb_streams;++i)
+    {
+        AVStream* input_stream = formatContext->streams[i];
+        if(input_stream -> codecpar ->codec_type == AVMEDIA_TYPE_VIDEO){
+            
+            if(input_stream->avg_frame_rate.den == 0)
+            {
+                onlyAudio = true;
+                continue;
+            }
+            infoMap.emplace("frame rate",std::to_string(input_stream->avg_frame_rate.num/input_stream->avg_frame_rate.den));
+
+            AVCodecParameters* codec_par = input_stream->codecpar;
+            
+            infoMap.emplace("width",std::to_string(codec_par->width));
+            infoMap.emplace("height",std::to_string(codec_par->height));
+            infoMap.emplace("video average bit rate",std::to_string(codec_par->bit_rate));
+
+            AVCodecContext * avctx_video;
+            //why the parameter can be NULL ?
+            avctx_video = avcodec_alloc_context3(nullptr);
+            int ret = avcodec_parameters_to_context(avctx_video,codec_par);
+            if(ret < 0)
+            {
+                avcodec_free_context(&avctx_video);
+                return 0;
+            }
+            char buf[128];
+            avcodec_string(buf,sizeof(buf),avctx_video,0);
+            infoMap.emplace("video_format",avcodec_get_name(codec_par->codec_id));
+        }else if(input_stream->codecpar->codec_type==AVMEDIA_TYPE_AUDIO){
+            AVCodecParameters* codec_par = input_stream -> codecpar;
+            AVCodecContext* avctx_audio;
+            avctx_audio = avcodec_alloc_context3(nullptr);
+            int ret = avcodec_parameters_to_context(avctx_audio,codec_par);
+            if(ret < 0){
+                avcodec_free_context(&avctx_audio);
+                return 0;
+            }
+
+            infoMap.emplace("avdio format",avcodec_get_name(avctx_audio->codec_id));
+            infoMap.emplace("audio average bit rate",
+                            std::to_string(codec_par->bit_rate));
+            infoMap.emplace("channel nums", std::to_string(codec_par->channels));
+            infoMap.emplace("Sample rate", std::to_string(codec_par->sample_rate));
+        }
+    }
+    return 0;
 }
 
+
+int Demuxer::close()
+{
+    std::cout << "close demuxer" << std::endl;
+    return reset();
+}
 
 
 int Demuxer::reset()
 {
     if(formatContext == nullptr) return -1;
     avformat_close_input(&formatContext);
+    totalDuration = 0;
     return 0;
 }
 
@@ -85,8 +163,18 @@ int Demuxer::clear()
 
 int Demuxer::read(std::shared_ptr<Packet> pPacket)
 {
-    if(formatContext == nullptr) return -1;
+    if(!formatContext){
+        std::cout << "format context is nullptr" << std::endl;
+    }
     int ret = av_read_frame(formatContext,pPacket->pkt);
+    if(ret == AVERROR_EOF) return 1;
+    if(ret){
+        std::cout << "read frame error. ret = " << ret << std::endl;
+    }
+
+    pPacket->pkt->pts = static_cast<int64_t>(
+        pPacket->pkt->pts*(1000*av_q2d(formatContext->streams[pPacket->pkt->stream_index]->time_base))
+    );
     return ret;
 }
 

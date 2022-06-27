@@ -70,8 +70,8 @@ class Frame
 public:
     Frame();
     ~Frame();
-    int VideoPrint();
-    int AudioPrint();
+    int videoPrint();
+    int audioPrint();
     uint64_t getPts() const;
     int getFormat() const;
 
@@ -87,9 +87,12 @@ public:
     ~Decoder();
 
     int init(AVCodecParameters*);
-    int sendPacket();
-    int recvFrame();
+    int sendPacket(std::shared_ptr<Packet> pPkt);
+    int recvFrame(std::shared_ptr<Frame> pFrame);
 
+    int setSeelMode(uint64_t seek_pts);
+    void clearSeekMode();
+    uint64_t getSeekMode();
 
     int clear();
     int close();

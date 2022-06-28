@@ -48,13 +48,13 @@ int Demuxer::open(std::string const& filename)
     infoMap.emplace("filename", filename);
 
     getInfo();
-    for(auto const&[key,value]:infoMap){
-        std::cout << "key = " << key.c_str() << "value = " << value.c_str() << std::endl;
+    for(auto const&t:infoMap){
+        std::cout << "key = " << t.first.c_str()<<"\t\t" << "value = " << t.second.c_str() << std::endl;
     }
 
     totalDuration = 
         static_cast<uint32_t>(formatContext->duration/(AV_TIME_BASE/1000));
-        std::cout << "视频总时长 = " << totalDuration << std::endl;
+        std::cout << "total duration = " << totalDuration << std::endl;
     return ret;
 }
 
@@ -188,6 +188,11 @@ uint64_t Demuxer::seek(double percent)
     }else {
         stream_index = getAudioStreamIndex();
     }
+    int64_t seek_pos = static_cast<int64_t>
+        (formatContext->streams[stream_index]->duration * percent);
+    //can't understand the symbol '|'
+    av_seek_frame(formatContext, stream_index, seek_pos, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);
+    return static_cast<uint64_t>(percent * totalDuration);
 }
 
 
@@ -205,4 +210,19 @@ int Demuxer::getVideoStreamIndex()
 int Demuxer::getAudioStreamIndex()
 {
     return av_find_best_stream(formatContext,AVMediaType::AVMEDIA_TYPE_AUDIO,-1,-1,nullptr,0);
+}
+
+
+int Demuxer::getStreamCount() { return formatContext->nb_streams; }
+
+AVCodecParameters* Demuxer::getStreamCodecPar(uint32_t index) {
+    if (index >= formatContext->nb_streams) return nullptr;
+    AVCodecParameters* codecpar = avcodec_parameters_alloc();
+    avcodec_parameters_copy(codecpar, formatContext->streams[index]->codecpar);
+    return codecpar;
+}
+
+
+ VideoInfo Demuxer::getVideoInfo() const {
+    return infoMap;
 }

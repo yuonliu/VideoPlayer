@@ -212,5 +212,17 @@ public:
     virtual void resetWindow(int x, int y, int w, int h) = 0;
 };
 
+struct SDL_Window;
+struct SDL_Rect;
+struct SDL_Renderer;
+struct SDL_Texture;
 
+class SDLVideoRender final :public VideoRenderBase
+{
+public:
+    SDLVideoRender();
+    virtual ~SDLVideoRender();
+    virtual void clear() override;
+
+};
 

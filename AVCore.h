@@ -223,6 +223,25 @@ public:
     SDLVideoRender();
     virtual ~SDLVideoRender();
     virtual void clear() override;
+    virtual void init(std::string const& title, uint32_t weight,
+        uint32_t height, void* windowHandle) override;
+    virtual void render(std::shared_ptr<Frame> pFrame) override;
+    virtual void resetWindow(int x, int y, int w, int h) override;
 
+    void resizeVideo_FullScreeen();
+    void resizeVideo(int w, int h);
+
+    void resizeWindow();
+    void clearScreen();
+
+private:
+    inline void renderOnWindowFromTexture();
+    int videoRenderWidth, videoRenderHeight;
+    int windowHeight, windowWidth;
+    SDL_Window* pWindow;
+    SDL_Rect* pDrawRect;
+    SDL_Renderer* pRender;
+    SDL_Texture* pTexture;
+    Converter* pConverter;
 };
 

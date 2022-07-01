@@ -4,14 +4,17 @@ project("VideoPlayer")
 
 
 
-include_directories(./3rdParty/include)
-link_directories(./3rdParty/lib)
+include_directories(./3rdParty/ffmpeg/include)
+include_directories(./3rdParty/SDL/include)
 
-add_executable(testDemo main.cpp Decoder.cpp Demuxer.cpp Frame.cpp Packet.cpp "Resample.cpp" "AVSynchronizer.cpp")
+link_directories(./3rdParty/ffmpeg/lib)
+link_directories(./3rdParty/SDL/lib/x64)
+
+add_executable(testDemo main.cpp Decoder.cpp Demuxer.cpp Frame.cpp Packet.cpp Resample.cpp AVSynchronizer.cpp "SDLVideoRender.cpp" "AVThread/EventLoop.cpp" "AVThread/EventLoop.h")
 
 
 
-target_link_libraries(testDemo avformat avcodec avutil)
+target_link_libraries(testDemo avformat avcodec avutil )
 
 
 

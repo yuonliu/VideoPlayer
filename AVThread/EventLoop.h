@@ -30,8 +30,8 @@ public:
 	std::string curState() const;
 
 protected:
-	void Finish();
-	virtual int RunOnce() = 0;
+	void finish();
+	virtual int runOnce() = 0;
 	void beforeDerivedClassDestruct();
 
 private:

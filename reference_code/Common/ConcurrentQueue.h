@@ -28,7 +28,7 @@ class ConcurrentQueue {
 
   void push(T const& value);
   void pop(T& value);
-
+  
   bool push_timeout(T const& value, uint32_t timeout);
   bool pop_timeout(T& value, uint32_t timeout);
 
@@ -108,11 +108,11 @@ bool ConcurrentQueue<T, QueueCon>::push_timeout(T const& value,
                                                 uint32_t timeout) {
   std::unique_lock<mutex_type> locker(mutex_);
   if (cv_full_.wait_for(locker, std::chrono::milliseconds(timeout),
-                        [this] { return unsafe_queue_.size() < capacity_; })) {
-    unsafe_queue_.push(value);
-    cv_empty_.notify_all();
-    return true;
-  };
+      [this] { return unsafe_queue_.size() < capacity_; })) {
+      unsafe_queue_.push(value);
+      cv_empty_.notify_all();
+      return true;
+  }
   return false;
 }
 
@@ -125,6 +125,6 @@ bool ConcurrentQueue<T, QueueCon>::pop_timeout(T& value, uint32_t timeout) {
     unsafe_queue_.pop();
     cv_full_.notify_all();
     return true;
-  };
+  }
   return false;
 }

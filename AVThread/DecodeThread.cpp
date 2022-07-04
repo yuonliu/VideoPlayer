@@ -49,7 +49,37 @@ int DecodeThread::runOnce()
 
 	if (ret != 0) {
 		PacketPtr pPkt;
-		if(pInput_packet_queue_->pop_timeout())
+		if (pInput_packet_queue_->pop_timeout(pPkt, 100) == false) {
+			return 0;
+		}
+		if (pPkt == nullptr) {
+			EventLoop()::finish();
+			return 0;
+		}
+		pDecoder_->sendPacket(pPkt);
+		pDecoder_->recvFrame(pFrame_);
 	}
 
+	if (pDecoder_->isSeekMode()) {
+		if (pFrame_->getPts() < pDecoder_->getSeekPts()) {
+			return 0;
+		}
+		else {
+			pDecoder_->clearSeekMode();
+		}
+	}
+
+	if (pOutput_frame_queue_->push_timeout(pFrame_, 100) == false) {
+		return 0;
+	}
+	else {
+		pFrame = nullptr;
+	}
+	return 0;
+}
+
+int DecodeThread::clearImpl()
+{
+	pDecoder_->clear();
+	return 0;
 }

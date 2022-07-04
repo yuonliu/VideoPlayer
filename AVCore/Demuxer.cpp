@@ -107,7 +107,7 @@ double Demuxer::getInfo()
             infoMap.emplace("video average bit rate",std::to_string(codec_par->bit_rate));
 
             AVCodecContext * avctx_video;
-            //why the parameter can be NULL ?
+            
             avctx_video = avcodec_alloc_context3(nullptr);
             int ret = avcodec_parameters_to_context(avctx_video,codec_par);
             if(ret < 0)

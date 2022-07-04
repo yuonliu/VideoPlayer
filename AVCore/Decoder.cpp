@@ -4,7 +4,6 @@ extern "C"
     #include <libavcodec/avcodec.h>
 }
 #include "AVCore.h"
-#include <iostream>
 
 
 Decoder::Decoder()
